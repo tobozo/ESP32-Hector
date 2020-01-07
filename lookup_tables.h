@@ -273,25 +273,6 @@ float romcos(float x) {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 #define LOG_CACHE_SIZE 1024
 static float logCache[LOG_CACHE_SIZE];
 float precision = 8.90; // 512 / 115

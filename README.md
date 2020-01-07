@@ -1,5 +1,8 @@
 # ESP32-Hector
 
+
+<img src=https://raw.githubusercontent.com/tobozo/ESP32-Hector/master/demo.gif>
+
 This project is heavily inspired from the work of Gerard Ferrandez http://codepen.io/ge1doot/details/eWzQBm/
 who developed and implemented a similar drawing function for HTML5 Canvas.
 

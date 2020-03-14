@@ -2,7 +2,7 @@
 
   ESP32-Hector is placed under the MIT license
 
-  Copyleft (c+) 2020 tobozo 
+  Copyleft (c+) 2020 tobozo
 
   Permission is hereby granted, free of charge, to any person obtaining a copy
   ociated documentation files (the "Software"), to deal
@@ -35,8 +35,11 @@
  */
 
 
-#include <M5Stack.h> // https://github.com/tobozo/ESP32-Chimera-Core
-#include <M5StackUpdater.h> // https://github.com/tobozo/M5Stack-SD-Updater
+//#include <M5Stack.h> // https://github.com/tobozo/ESP32-Chimera-Core
+//#include <M5StackUpdater.h> // https://github.com/tobozo/M5Stack-SD-Updater
+#include <LGFX_TFT_eSPI.hpp>
+#include <driver/ledc.h>
+
 #include "ULPAudio.h"
 
 #define SIZE 150
@@ -44,11 +47,17 @@
 #define GRID_SIZE SIZE/STEP
 #include "lookup_tables.h"
 
-#define tft M5.Lcd
 
-TFT_eSprite sprite = TFT_eSprite( &tft );
-TFT_eSprite headersprite = TFT_eSprite( &tft );
-TFT_eSprite gfx = TFT_eSprite(&tft); // Sprite object for graphics write
+
+static TFT_eSPI tft;
+static TFT_eSprite sprite( &tft );
+static TFT_eSprite headersprite( &tft );
+static TFT_eSprite gfx(&tft); // Sprite object for graphics write
+
+//#define tft M5.Lcd
+//TFT_eSprite sprite = TFT_eSprite( &tft );
+//TFT_eSprite headersprite = TFT_eSprite( &tft );
+//TFT_eSprite gfx = TFT_eSprite(&tft); // Sprite object for graphics write
 
 SFX* sfx;
 
@@ -83,7 +92,7 @@ static int16_t lastpeak[PEAK_SIZE*2]; // depth cache, for 'solid' visual effect
 static int16_t pathindex, scan_x, scan_y;
 static int16_t txlast;
 static int16_t tylast;
-static int16_t scroll_x = 0; // Keep track of the scrolled position, this is where the origin 
+static int16_t scroll_x = 0; // Keep track of the scrolled position, this is where the origin
 static int16_t scroll_y = 0; // (top left) of the gfx Sprite will be
 
 static uint16_t screenWidth;
@@ -157,7 +166,7 @@ struct UIButton {
   ButtonCoords coords;
   uint8_t width;
   uint8_t height;
-  
+
   void render(ButtonState state=BUTTON_PAUSE ) {
     uint16_t x = coords.x;
     uint16_t y = coords.y;
@@ -320,7 +329,7 @@ void drawLineOverlap() {
   switch( displayStyle ) {
     case DISPLAY_GRID:
         sprite.drawLine( x0, screenHeight-y0, x1, screenHeight-y1, color );
-        return;      
+        return;
     break;
     case DISPLAY_SOLID:
       if(  pathindex%3 == 0 &&  scan_y%2 == 1
@@ -385,6 +394,8 @@ void sinLoop() {
   romsinav = romsin(av);
   romcosah = romcos(ah);
   romsinah = romsin(ah);
+
+  tft.startWrite();
 
   sprite.fillSprite( TFT_BLACK );
 
@@ -458,11 +469,11 @@ void sinLoop() {
             size = SIZE;
             step = STEP*1.5;
             setupScale();
-            surfaceFunction = &sinwave; 
+            surfaceFunction = &sinwave;
           break;
-          case DRIP_WAVE: 
+          case DRIP_WAVE:
             setupScale();
-            surfaceFunction = &dripwave; 
+            surfaceFunction = &dripwave;
           break;
         }
         oldWaveStyle = waveStyle;
@@ -470,7 +481,7 @@ void sinLoop() {
 
     }
   }
-
+/*
   if( nowmillis > lastscroll + scrolltick ) {
     uint16_t chromar = map( 64*romsin(k), -64, 64, 128, 200);
     uint16_t chromag = map( 64*romsin(k*2), -64, 64, 128, 200);
@@ -481,8 +492,10 @@ void sinLoop() {
     headersprite.pushSprite( spritePosX , 0 );
     lastscroll = nowmillis;
   }
-
+*/
   sprite.pushSprite( spritePosX, spritePosY );
+
+  tft.endWrite();
 }
 
 
@@ -513,6 +526,7 @@ void setupScale() {
 void waveScroll( int dx ) {
   uint16_t width = gfx.width();
   uint16_t height = gfx.height();
+  uint16_t hwidth = headersprite.width();
 
   if (scroll_x < -width ) scroll_x += width;
   if (scroll_x > 0) scroll_x -= width;
@@ -521,16 +535,19 @@ void waveScroll( int dx ) {
 
   for (uint16_t x = 0; x < width; x++) {
     uint16_t xpos = (scroll_x+x)%(width);
-    float xseq = (float)xpos / (float)headersprite.width() * (4*PI);
+    float xseq = (float)xpos / (float)hwidth * (4*PI);
     int8_t margin = height/2 + (float)height/2.0 * romcos( xseq );
     int16_t offsetx = scroll_x + x + dx;
     //Serial.println( margin );
     for (uint16_t y = 0; y < height; y++) {
-      if( offsetx > 0 && offsetx < headersprite.width()) {
-        headersprite.drawPixel(offsetx,         y+margin, gfx.readPixel(x, y));
-      }
-      if( offsetx + width > 0 && offsetx + width < headersprite.width() ) {
-        headersprite.drawPixel(offsetx + width, y+margin, gfx.readPixel(x, y));
+      uint16_t pixColor = gfx.readPixel(x, y);
+      if( pixColor != TFT_BLACK ) {
+        if( offsetx > 0 && offsetx < hwidth) {
+          headersprite.drawPixel(offsetx,         y+margin, pixColor);
+        }
+        if( offsetx + width > 0 && offsetx + width < hwidth ) {
+          headersprite.drawPixel(offsetx + width, y+margin, pixColor);
+        }
       }
     }
   }
@@ -546,7 +563,7 @@ static void drawLoop( void * param ) {
     gy = -romsin(fmod(k*.25,2*PI))*/*amplitude*/50 /*offset*/-250;
 
     sinLoop();
-
+/*
     M5.update(); // read buttons
 
     if( M5.BtnA.wasPressed() ) {
@@ -571,6 +588,7 @@ static void drawLoop( void * param ) {
         SpeakerButton.render(BUTTON_SPEAKER_OFF);
       }
     }
+*/
     vTaskDelay(1);
   }
 
@@ -580,14 +598,45 @@ static void drawLoop( void * param ) {
 
 
 void setup() {
-  M5.begin();
-  tft.clear();
+  #if defined(ARDUINO_M5Stick_C)
+    AXP192 axp;
+    axp.begin();
+  #elif defined(ARDUINO_M5Stack_Core_ESP32) || defined(ARDUINO_M5STACK_FIRE)
+  #ifdef _SD_H_
+    SD.begin(4, SPI, 20000000);
+  #endif
 
-  if(digitalRead(BUTTON_A_PIN) == 0) {
-    Serial.println("Will Load menu binary");
-    updateFromFS( SD );
-    ESP.restart();
-  }
+  #define GPIO_BL 32
+  #elif defined ( ARDUINO_T ) // T-Watch
+  #define GPIO_BL 12
+  #elif defined ( ARDUINO_ESP32_DEV )
+  #define GPIO_BL 5
+  #endif
+
+  #ifdef GPIO_BL
+    pinMode(GPIO_BL, OUTPUT);
+
+    //lgfx::TPin<GPIO_BL>::init();
+    //lgfx::TPin<GPIO_BL>::hi();
+
+    const int BLK_PWM_CHANNEL = 7;
+    ledcSetup(BLK_PWM_CHANNEL, 12000, 8);
+    ledcAttachPin(GPIO_BL, BLK_PWM_CHANNEL);
+    ledcWrite(BLK_PWM_CHANNEL, 128);
+  #endif
+
+
+  #ifdef __M5STACKUPDATER_H//#include <TFT_eSPI.h>
+    if(digitalRead(BUTTON_A_PIN) == 0) {
+      Serial.println("Will Load menu binary");
+      updateFromFS( SD );
+      ESP.restart();
+    }
+  #endif
+
+  tft.init();
+
+  tft.setRotation(1);
 
   if( tft.width() > tft.height() ) { // landscape
     screenWidth      = 300;
@@ -619,7 +668,7 @@ void setup() {
   gx = 256 + (k*20);
   gy = -305;
 
-  tft.fillRect(0, 0, tft.width(), tft.height(), BLACK);
+  tft.fillRect(0, 0, tft.width(), tft.height(), TFT_BLACK);
   tft.setTextSize( textsize );
 
   const char* scrollText = " . . . If silence is as deep as eternity, then speech is as shallow as time . . .  ";
@@ -655,7 +704,7 @@ void setup() {
   sfx = new SFX();
   xTaskCreatePinnedToCore(ulpLoop, "ulpLoop", 2048, NULL, 4, NULL, 1);
 
-  xTaskCreatePinnedToCore(drawLoop, "drawLoop", 2048, NULL, 16, NULL, 0);
+  xTaskCreatePinnedToCore(drawLoop, "drawLoop", 4096, NULL, 16, NULL, 0);
 
 }
 
